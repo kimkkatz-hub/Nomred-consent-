@@ -274,14 +274,19 @@
       <h1>Before we call —<br>can we discuss your property?</h1>
       <p class="lede">Your property has a scheduled sale in execution. We help owners either stop the process or sell before it goes to auction. We won't call unless you say it's okay.</p>
 
-      <button class="choice yes" onclick="chooseConsent(true)">
+      <button class="choice yes" onclick="goStep(2)">
         Yes, I'd like to talk
         <span class="sub">We'll ask when's best to reach you</span>
       </button>
-      <button class="choice no" onclick="chooseConsent(false)">
-        No, please don't contact me
-        <span class="sub">We'll close your file and won't follow up</span>
-      </button>
+      <form id="noForm" action="https://formspree.io/f/xeeyzekd" method="POST" style="margin:0;">
+        <input type="hidden" name="caseRef" id="noCaseRef">
+        <input type="hidden" name="consented" value="No">
+        <input type="hidden" name="_next" id="noRedirect">
+        <button type="submit" class="choice no">
+          No, please don't contact me
+          <span class="sub">We'll close your file and won't follow up</span>
+        </button>
+      </form>
     </div>
 
     <!-- STEP 2: SCHEDULING -->
@@ -289,18 +294,25 @@
       <h1>When's a good time?</h1>
       <p class="lede">Pick whatever works — we'll call at that time, nothing before.</p>
 
-      <div class="slots" id="slotGrid"></div>
+      <form id="yesForm" action="https://formspree.io/f/xeeyzekd" method="POST">
+        <input type="hidden" name="caseRef" id="yesCaseRef">
+        <input type="hidden" name="consented" value="Yes">
+        <input type="hidden" name="slot" id="slotHidden">
+        <input type="hidden" name="_next" id="yesRedirect">
 
-      <label class="field-label" for="nameInput">Your name (optional)</label>
-      <input type="text" id="nameInput" placeholder="So we know who we're calling">
+        <div class="slots" id="slotGrid"></div>
 
-      <label class="field-label" for="phoneInput">Contact number(s) <span style="color:#C9A227;">*</span></label>
-      <input type="text" id="phoneInput" placeholder="e.g. 082 123 4567, or a second number" oninput="validateStep2()">
+        <label class="field-label" for="nameInput">Your name (optional)</label>
+        <input type="text" name="name" id="nameInput" placeholder="So we know who we're calling">
 
-      <label class="field-label" for="noteInput">Other time / note (optional)</label>
-      <input type="text" id="noteInput" placeholder="e.g. after 6pm weekdays">
+        <label class="field-label" for="phoneInput">Contact number(s) <span style="color:#C9A227;">*</span></label>
+        <input type="text" name="phone" id="phoneInput" placeholder="e.g. 082 123 4567, or a second number" oninput="validateStep2()">
 
-      <button class="seal-btn" id="confirmBtn" disabled onclick="submitResponse(true)">Confirm callback time</button>
+        <label class="field-label" for="noteInput">Other time / note (optional)</label>
+        <input type="text" name="note" id="noteInput" placeholder="e.g. after 6pm weekdays">
+
+        <button type="submit" class="seal-btn" id="confirmBtn" disabled>Confirm callback time</button>
+      </form>
       <span class="back-link" onclick="goStep(1)">← back</span>
     </div>
 
@@ -344,10 +356,15 @@
 const params = new URLSearchParams(window.location.search);
 const isAdmin = params.has('admin');
 const caseRef = params.get('case') || 'ELN-118-2026';
-const contactTag = params.get('id') || ('resp_' + Date.now());
 
 document.getElementById('caseNoLabel').textContent = 'Ref: ' + caseRef;
 document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('en-ZA', {day:'numeric', month:'short'});
+
+const baseUrl = window.location.origin + window.location.pathname;
+document.getElementById('yesCaseRef').value = caseRef;
+document.getElementById('noCaseRef').value = caseRef;
+document.getElementById('yesRedirect').value = baseUrl + '?case=' + encodeURIComponent(caseRef) + '&done=yes';
+document.getElementById('noRedirect').value = baseUrl + '?case=' + encodeURIComponent(caseRef) + '&done=no';
 
 const SLOTS = ['Today, morning','Today, afternoon','Tomorrow, morning','Tomorrow, afternoon'];
 let selectedSlot = null;
@@ -357,10 +374,12 @@ function buildSlots(){
   grid.innerHTML = '';
   SLOTS.forEach(s => {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'slot';
     b.textContent = s;
     b.onclick = () => {
       selectedSlot = s;
+      document.getElementById('slotHidden').value = s;
       document.querySelectorAll('.slot').forEach(el => el.classList.remove('selected'));
       b.classList.add('selected');
       validateStep2();
@@ -380,48 +399,14 @@ function goStep(n){
   document.getElementById('step'+n).classList.add('active');
 }
 
-function chooseConsent(consented){
-  if(!consented){
-    submitResponse(false);
-  } else {
-    goStep(2);
-  }
-}
-
-async function submitResponse(consented){
-  const name = document.getElementById('nameInput') ? document.getElementById('nameInput').value.trim() : '';
-  const note = document.getElementById('noteInput') ? document.getElementById('noteInput').value.trim() : '';
-  const phone = document.getElementById('phoneInput') ? document.getElementById('phoneInput').value.trim() : '';
-
-  const record = {
-    caseRef,
-    consented: consented ? 'Yes' : 'No',
-    slot: consented ? (selectedSlot || '') : '',
-    note: consented ? (note || '') : '',
-    name: name || '',
-    phone: consented ? (phone || '') : '',
-    submittedAt: new Date().toISOString()
-  };
-
-  try{
-    await fetch('https://formspree.io/f/xeeyzekd', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(record)
-    });
-  } catch(e){
-    console.error('Submission error', e);
-  }
-
+// After Formspree redirects back here, show the right confirmation using the URL's own query params
+const done = params.get('done');
+if(done === 'yes' || done === 'no'){
   goStep(3);
-  if(consented){
+  if(done === 'yes'){
     document.getElementById('confirmHeadline').textContent = "You're booked in.";
-    document.getElementById('confirmBody').textContent = "We'll call you " + (selectedSlot ? selectedSlot.toLowerCase() : '') + ". No calls outside that window.";
-    document.getElementById('receiptBox').innerHTML =
-      '<b>Ref:</b> ' + caseRef + '<br>' +
-      (name ? '<b>Name:</b> ' + name + '<br>' : '') +
-      '<b>Number(s):</b> ' + phone + '<br>' +
-      '<b>Callback:</b> ' + (selectedSlot || note || 'as noted') + (note && selectedSlot ? ' — ' + note : '');
+    document.getElementById('confirmBody').textContent = "We've got your request — we'll call you at the time you chose. No calls outside that window.";
+    document.getElementById('receiptBox').innerHTML = '<b>Ref:</b> ' + caseRef + '<br>Thanks — your details have been sent to Nomred Property Solutions.';
   } else {
     document.getElementById('confirmHeadline').textContent = "Understood.";
     document.getElementById('confirmBody').textContent = "We won't contact you again about this. If that changes, you're welcome to reach out.";
@@ -435,5 +420,5 @@ if(isAdmin){
 }
 </script>
 </body>
-      </html>
-
+  </html>
+  
