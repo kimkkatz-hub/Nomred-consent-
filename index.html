@@ -333,17 +333,10 @@
     <div class="mark">N</div>
     <div class="name"><b>Nomred Property Solutions</b> · Responses</div>
   </div>
-  <div class="card" style="padding:20px 20px 26px;">
-    <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-      <input type="text" id="searchInput" placeholder="Search name, number, or ref…" style="flex:1; min-width:180px;" oninput="renderAdminRows()">
-      <select id="filterSelect" onchange="renderAdminRows()" style="background:var(--ink); color:var(--parchment); border:1px solid var(--line); padding:0 10px; border-radius:2px; font-size:13.5px;">
-        <option value="all">All</option>
-        <option value="yes">Consented only</option>
-        <option value="no">Declined only</option>
-        <option value="pending">Consented, not yet contacted</option>
-      </select>
-    </div>
-    <div id="adminTableWrap"><div class="empty">Loading…</div></div>
+  <div class="card" style="padding:26px 22px;">
+    <h1 style="font-size:19px;">Responses now go to Formspree</h1>
+    <p class="lede" style="margin-bottom:16px;">Every submission on this page is emailed straight to you, and you can see all of them together on your Formspree dashboard.</p>
+    <a href="https://formspree.io/forms" style="display:inline-block; background:var(--brass); color:var(--ink); padding:12px 18px; border-radius:2px; text-decoration:none; font-weight:600; font-size:14px;">Open Formspree Dashboard</a>
   </div>
 </div>
 
@@ -402,19 +395,22 @@ async function submitResponse(consented){
 
   const record = {
     caseRef,
-    consented,
-    slot: consented ? (selectedSlot || null) : null,
-    note: consented ? (note || null) : null,
-    name: name || null,
-    phone: consented ? (phone || null) : null,
-    contacted: false,
+    consented: consented ? 'Yes' : 'No',
+    slot: consented ? (selectedSlot || '') : '',
+    note: consented ? (note || '') : '',
+    name: name || '',
+    phone: consented ? (phone || '') : '',
     submittedAt: new Date().toISOString()
   };
 
   try{
-    await window.storage.set('response:' + caseRef + ':' + contactTag, JSON.stringify(record), true);
+    await fetch('https://formspree.io/f/xeeyzekd', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(record)
+    });
   } catch(e){
-    console.error('Storage error', e);
+    console.error('Submission error', e);
   }
 
   goStep(3);
@@ -433,88 +429,11 @@ async function submitResponse(consented){
   }
 }
 
-let allRows = [];
-
-async function loadAdmin(){
+if(isAdmin){
   document.getElementById('publicView').style.display = 'none';
   document.getElementById('adminView').style.display = 'block';
-  const wrap = document.getElementById('adminTableWrap');
-  try{
-    const list = await window.storage.list('response:', true);
-    if(!list || !list.keys || list.keys.length === 0){
-      wrap.innerHTML = '<div class="empty">No responses yet.</div>';
-      return;
-    }
-    const rows = [];
-    for(const key of list.keys){
-      try{
-        const r = await window.storage.get(key, true);
-        if(r && r.value){
-          const parsed = JSON.parse(r.value);
-          parsed._key = key;
-          rows.push(parsed);
-        }
-      }catch(e){}
-    }
-    rows.sort((a,b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-    allRows = rows;
-    renderAdminRows();
-  } catch(e){
-    wrap.innerHTML = '<div class="empty">Could not load responses.</div>';
-    console.error(e);
-  }
-}
-
-async function toggleContacted(key, checkbox){
-  const row = allRows.find(r => r._key === key);
-  if(!row) return;
-  row.contacted = checkbox.checked;
-  try{
-    const { _key, ...toSave } = row;
-    await window.storage.set(key, JSON.stringify(toSave), true);
-  }catch(e){ console.error(e); }
-}
-
-function renderAdminRows(){
-  const wrap = document.getElementById('adminTableWrap');
-  const q = (document.getElementById('searchInput').value || '').toLowerCase().trim();
-  const filter = document.getElementById('filterSelect').value;
-
-  let rows = allRows.filter(r => {
-    if(filter === 'yes' && !r.consented) return false;
-    if(filter === 'no' && r.consented) return false;
-    if(filter === 'pending' && !(r.consented && !r.contacted)) return false;
-    if(q){
-      const hay = [r.caseRef, r.name, r.phone].filter(Boolean).join(' ').toLowerCase();
-      if(!hay.includes(q)) return false;
-    }
-    return true;
-  });
-
-  if(rows.length === 0){
-    wrap.innerHTML = '<div class="empty">No matching responses.</div>';
-    return;
-  }
-
-  let html = '<table><thead><tr><th>Ref</th><th>Name</th><th>Number(s)</th><th>Consent</th><th>Callback</th><th>Received</th><th>Contacted</th></tr></thead><tbody>';
-  rows.forEach(r => {
-    html += '<tr>' +
-      '<td>'+ (r.caseRef||'—') +'</td>' +
-      '<td>'+ (r.name||'—') +'</td>' +
-      '<td>'+ (r.phone||'—') +'</td>' +
-      '<td><span class="pill '+(r.consented?'yes':'no')+'">'+(r.consented?'Yes':'No')+'</span></td>' +
-      '<td>'+ (r.consented ? [r.slot, r.note].filter(Boolean).join(' — ') || '—' : '—') +'</td>' +
-      '<td>'+ new Date(r.submittedAt).toLocaleString('en-ZA') +'</td>' +
-      '<td>'+ (r.consented ? '<input type="checkbox" '+(r.contacted?'checked':'')+' onchange="toggleContacted(\''+r._key+'\', this)">' : '—') +'</td>' +
-    '</tr>';
-  });
-  html += '</tbody></table>';
-  wrap.innerHTML = html;
-}
-
-if(isAdmin){
-  loadAdmin();
 }
 </script>
 </body>
-</html>
+      </html>
+
